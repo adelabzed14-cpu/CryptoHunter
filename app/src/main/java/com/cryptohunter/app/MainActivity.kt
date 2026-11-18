@@ -20,6 +20,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -28,12 +32,15 @@ import org.json.JSONArray
 import kotlin.math.abs
 import kotlin.math.max
 
-private val Bg = Color(0xFFF2F8FC)
-private val Panel = Color(0xFFFFFFFF)
-private val Gold = Color(0xFF38A9E8)
-private val Green = Color(0xFF26C281)
-private val Red = Color(0xFFEF6262)
-private val Muted = Color(0xFF64748B)
+private val Bg = Color(0xFF070B16)
+private val Panel = Color(0xFF111A2B)
+private val PanelAlt = Color(0xFF172338)
+private val Gold = Color(0xFF38BDF8)
+private val Purple = Color(0xFF8B5CF6)
+private val Green = Color(0xFF22C55E)
+private val Red = Color(0xFFFB5364)
+private val TextMain = Color(0xFFF1F5F9)
+private val Muted = Color(0xFF9AAAC0)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,6 +63,20 @@ class MarketRepository {
             if (!response.isSuccessful) error("Binance HTTP ${response.code}")
             return response.body?.string() ?: error("Empty response")
         }
+    }
+
+    suspend fun latestPrices(futures: Boolean): Map<String, Double> {
+        val base = if (futures) "https://fapi.binance.com" else "https://api.binance.com"
+        val path = if (futures) "/fapi/v1/ticker/24hr" else "/api/v3/ticker/24hr"
+        val tickers = JSONArray(get(base + path))
+        val result = mutableMapOf<String, Double>()
+        for (i in 0 until tickers.length()) {
+            val item = tickers.getJSONObject(i)
+            val symbol = item.optString("symbol")
+            val price = item.optString("lastPrice").toDoubleOrNull()
+            if (symbol.endsWith("USDT") && price != null && price > 0) result[symbol] = price
+        }
+        return result
     }
 
     suspend fun scan(futures: Boolean, interval: String): List<CoinSignal> {
@@ -162,9 +183,22 @@ class MarketViewModel : ViewModel() {
     var signals by mutableStateOf<List<CoinSignal>>(emptyList())
     var updated by mutableStateOf("")
     private val repo = MarketRepository()
+    private var scanRunning = false
+
+    fun refreshPrices() {
+        viewModelScope.launch {
+            try {
+                val latest = withContext(Dispatchers.IO) { repo.latestPrices(futures) }
+                signals = signals.map { coin -> latest[coin.symbol]?.let { coin.copy(price = it) } ?: coin }
+                updated = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+            } catch (_: Exception) { }
+        }
+    }
 
     fun refresh() {
+        if (scanRunning) return
         viewModelScope.launch {
+            scanRunning = true
             loading = true
             error = ""
             try {
@@ -173,7 +207,7 @@ class MarketViewModel : ViewModel() {
                 if (signals.isEmpty()) error = "لم تصل نتائج. تحقق من اتصال الإنترنت أو أعد المحاولة."
             } catch (e: Exception) {
                 error = "تعذر جلب بيانات Binance: ${e.message ?: "خطأ اتصال"}"
-            } finally { loading = false }
+            } finally { loading = false; scanRunning = false }
         }
     }
 }
@@ -181,19 +215,33 @@ class MarketViewModel : ViewModel() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CryptoHunterApp(vm: MarketViewModel = viewModel()) {
-    LaunchedEffect(Unit) { vm.refresh() }
-    MaterialTheme(colorScheme = lightColorScheme(
-        primary = Gold, background = Bg, surface = Panel,
-        onBackground = Color.White, onSurface = Color.White
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            vm.refresh()
+            var cycles = 0
+            while (true) {
+                delay(5_000)
+                vm.refreshPrices()
+                cycles++
+                if (cycles % 12 == 0) vm.refresh()
+            }
+        }
+    }
+    MaterialTheme(colorScheme = darkColorScheme(
+        primary = Gold, secondary = Purple, background = Bg, surface = Panel,
+        onBackground = TextMain, onSurface = TextMain,
+        surfaceVariant = PanelAlt, onSurfaceVariant = Muted,
+        primaryContainer = Color(0xFF12334A), onPrimaryContainer = TextMain
     )) {
         Scaffold(containerColor = Bg, topBar = {
             TopAppBar(
                 title = { Column {
-                    Text("CRYPTO HUNTER", color = Color(0xFF102A43), fontWeight = FontWeight.Black)
+                    Text("CRYPTO HUNTER", color = TextMain, fontWeight = FontWeight.Black)
                     Text("ماسح سوق Binance الذكي", color = Muted, style = MaterialTheme.typography.labelSmall)
                 }},
                 actions = { IconButton(onClick = { vm.refresh() }) { Icon(Icons.Default.Refresh, "تحديث", tint = Gold) } },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Bg)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Bg, titleContentColor = TextMain)
             )
         }) { padding ->
             Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
@@ -211,7 +259,7 @@ fun CryptoHunterApp(vm: MarketViewModel = viewModel()) {
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (vm.futures) "أفضل فرص العقود الآجلة" else "أفضل فرص السوق الفوري", color = Color(0xFF102A43), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(if (vm.futures) "أفضل فرص العقود الآجلة" else "أفضل فرص السوق الفوري", color = TextMain, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     Text("تحديث: ${vm.updated.ifBlank { "--:--" }}", color = Muted, style = MaterialTheme.typography.labelSmall)
                 }
                 Text("رصد الزخم وحجم التداول • إطار ${vm.interval}", color = Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
@@ -231,8 +279,8 @@ fun CryptoHunterApp(vm: MarketViewModel = viewModel()) {
 @Composable
 fun ModeButton(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     Button(onClick = onClick, modifier = modifier, colors = ButtonDefaults.buttonColors(
-        containerColor = if (selected) Gold else Panel,
-        contentColor = if (selected) Bg else Color.White
+        containerColor = if (selected) Gold else PanelAlt,
+        contentColor = if (selected) Color(0xFF06111F) else TextMain
     ), shape = RoundedCornerShape(12.dp)) { Text(label, fontWeight = FontWeight.Bold) }
 }
 
@@ -242,7 +290,7 @@ fun SignalCard(s: CoinSignal) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(s.symbol, color = Color(0xFF102A43), fontWeight = FontWeight.Bold)
+                    Text(s.symbol, color = TextMain, fontWeight = FontWeight.Bold)
                     Text("24h ${"%.2f".format(s.change)}%", color = if (s.change >= 0) Green else Red, style = MaterialTheme.typography.labelSmall)
                 }
                 Column(horizontalAlignment = Alignment.End) {
@@ -250,8 +298,8 @@ fun SignalCard(s: CoinSignal) {
                     Text(s.signal, color = if (s.score >= 75) Green else Muted, style = MaterialTheme.typography.labelSmall)
                 }
             }
-            HorizontalDivider(Modifier.padding(vertical = 10.dp), color = Color(0xFFE2EAF1))
-            Text("السعر الحالي / الدخول: ${fmt(s.entry)} USDT", color = Color(0xFF102A43))
+            HorizontalDivider(Modifier.padding(vertical = 10.dp), color = Color(0xFF26364D))
+            Text("السعر الحالي: ${fmt(s.price)} USDT", color = TextMain)
             Text("وقف الخسارة: ${fmt(s.stop)}", color = Red)
             Text("جني الأرباح: ${fmt(s.tp1)}  |  ${fmt(s.tp2)}  |  ${fmt(s.tp3)}", color = Green)
             Text(s.reason, color = Muted, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 8.dp))
