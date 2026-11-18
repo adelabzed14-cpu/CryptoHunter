@@ -1,6 +1,8 @@
 package com.cryptohunter.app
 
 import android.os.Bundle
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -10,6 +12,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,7 +50,7 @@ private val Muted = Color(0xFF9AAAC0)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { CryptoHunterApp() }
+        setContent { CryptoHunterRoot() }
     }
 }
 
@@ -209,6 +214,172 @@ class MarketViewModel : ViewModel() {
                 error = "تعذر جلب بيانات Binance: ${e.message ?: "خطأ اتصال"}"
             } finally { loading = false; scanRunning = false }
         }
+    }
+}
+
+
+@Composable
+fun CryptoHunterRoot() {
+    val auth = remember { FirebaseAuth.getInstance() }
+    var verifiedUser by remember { mutableStateOf<FirebaseUser?>(null) }
+    var authReady by remember { mutableStateOf(false) }
+
+    DisposableEffect(auth) {
+        val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
+            val user = firebaseAuth.currentUser
+            if (user == null) {
+                verifiedUser = null
+                authReady = true
+            } else {
+                user.reload().addOnCompleteListener {
+                    val refreshed = auth.currentUser
+                    if (refreshed != null && refreshed.isEmailVerified) {
+                        verifiedUser = refreshed
+                    } else {
+                        verifiedUser = null
+                    }
+                    authReady = true
+                }
+            }
+        }
+        auth.addAuthStateListener(listener)
+        onDispose { auth.removeAuthStateListener(listener) }
+    }
+
+    MaterialTheme(colorScheme = darkColorScheme(
+        primary = Gold, secondary = Purple, background = Bg, surface = Panel,
+        onBackground = TextMain, onSurface = TextMain,
+        surfaceVariant = PanelAlt, onSurfaceVariant = Muted,
+        primaryContainer = Color(0xFF12334A), onPrimaryContainer = TextMain
+    )) {
+        if (!authReady) {
+            Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = Gold)
+            }
+        } else if (verifiedUser != null) {
+            CryptoHunterApp()
+        } else {
+            AuthScreen(auth)
+        }
+    }
+}
+
+@Composable
+fun AuthScreen(auth: FirebaseAuth) {
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var isRegister by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf("") }
+    var isError by remember { mutableStateOf(false) }
+
+    fun showResult(text: String, error: Boolean = false) {
+        message = text
+        isError = error
+        loading = false
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("CRYPTO HUNTER", color = TextMain, fontWeight = FontWeight.Black, style = MaterialTheme.typography.headlineMedium)
+        Text("تسجيل الدخول بالبريد الإلكتروني", color = Muted, modifier = Modifier.padding(top = 8.dp, bottom = 28.dp))
+        OutlinedTextField(
+            value = email, onValueChange = { email = it.trim() },
+            label = { Text("البريد الإلكتروني") }, singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = password, onValueChange = { password = it },
+            label = { Text("كلمة المرور") }, singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(18.dp))
+        Button(
+            onClick = {
+                if (email.isBlank() || password.length < 6) {
+                    showResult("أدخل بريداً صحيحاً وكلمة مرور من 6 أحرف على الأقل.", true)
+                } else {
+                    loading = true
+                    message = ""
+                    if (isRegister) {
+                        auth.createUserWithEmailAndPassword(email, password)
+                            .addOnCompleteListener { task ->
+                                if (task.isSuccessful) {
+                                    val user = auth.currentUser
+                                    if (user != null) {
+                                        user.sendEmailVerification().addOnCompleteListener { verifyTask ->
+                                            auth.signOut()
+                                            if (verifyTask.isSuccessful) showResult("أنشأنا الحساب. افتح رسالة التحقق في بريدك ثم ارجع وسجّل الدخول.")
+                                            else showResult("تم إنشاء الحساب، لكن تعذر إرسال رسالة التحقق. جرّب تسجيل الدخول لإعادة إرسالها.", true)
+                                        }
+                                    } else showResult("تعذر إكمال إنشاء الحساب. حاول مرة أخرى.", true)
+                                } else showResult(task.exception?.localizedMessage ?: "تعذر إنشاء الحساب.", true)
+                            }
+                    } else {
+                        auth.signInWithEmailAndPassword(email, password)
+                            .addOnCompleteListener { task ->
+                                if (task.isSuccessful) {
+                                    val user = auth.currentUser
+                                    if (user != null) {
+                                        user.reload().addOnCompleteListener {
+                                            val refreshed = auth.currentUser
+                                            if (refreshed?.isEmailVerified == true) {
+                                                showResult("تم تسجيل الدخول.")
+                                            } else {
+                                                refreshed?.sendEmailVerification()?.addOnCompleteListener {
+                                                    auth.signOut()
+                                                    showResult("بريدك غير مؤكد بعد. أرسلنا رابط تحقق جديد؛ افتحه ثم سجّل الدخول.", true)
+                                                } ?: run {
+                                                    auth.signOut()
+                                                    showResult("أكد بريدك الإلكتروني أولاً ثم سجّل الدخول.", true)
+                                                }
+                                            }
+                                        }
+                                    } else showResult("تعذر قراءة الحساب.", true)
+                                } else showResult(task.exception?.localizedMessage ?: "البريد أو كلمة المرور غير صحيحة.", true)
+                            }
+                    }
+                }
+            },
+            enabled = !loading,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            if (loading) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            else Text(if (isRegister) "إنشاء حساب" else "تسجيل الدخول")
+        }
+        TextButton(onClick = {
+            isRegister = !isRegister
+            message = ""
+        }) {
+            Text(if (isRegister) "لديك حساب؟ تسجيل الدخول" else "إنشاء حساب جديد")
+        }
+        if (!isRegister) {
+            TextButton(
+                enabled = email.isNotBlank() && !loading,
+                onClick = {
+                    loading = true
+                    auth.sendPasswordResetEmail(email).addOnCompleteListener { task ->
+                        if (task.isSuccessful) showResult("أرسلنا رابط استعادة كلمة المرور إلى بريدك.")
+                        else showResult(task.exception?.localizedMessage ?: "تعذر إرسال رابط الاستعادة.", true)
+                    }
+                }
+            ) { Text("نسيت كلمة المرور؟") }
+        }
+        if (message.isNotBlank()) {
+            Text(message, color = if (isError) Red else Green, modifier = Modifier.padding(top = 12.dp))
+        }
+        Text(
+            "يلزم تأكيد البريد الإلكتروني قبل استخدام التطبيق. لا نطلب رقم هاتف.",
+            color = Muted, style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 24.dp)
+        )
     }
 }
 
