@@ -46,3 +46,16 @@ npx wrangler login
 npm run typecheck
 npm run deploy
 ```
+
+## Recommended: deploy automatically with GitHub Actions (no browser service)
+
+A workflow is included at `.github/workflows/deploy-market-scanner.yml`. It runs on pushes to `main` that change `market-scanner/**`, and can also be started manually from the Actions tab.
+
+Before the first deployment, add these two repository Actions secrets under **Settings → Secrets and variables → Actions → New repository secret**:
+
+- `CLOUDFLARE_API_TOKEN`: a Cloudflare API token scoped to this account with **Account / Workers Scripts / Edit** and **Zone / Workers Routes / Edit** only if routes are needed. The current Worker uses a workers.dev URL and does not need a custom route.
+- `CLOUDFLARE_ACCOUNT_ID`: the Cloudflare account ID shown on the account overview page.
+
+Do not paste either value into chat or commit them to the repository. After saving both secrets, open **Actions → Deploy Crypto Hunter Market Scanner → Run workflow** and select `main`. The workflow type-checks the Worker and deploys it. Subsequent changes to `market-scanner/**` on `main` deploy automatically.
+
+The workflow does not configure Firebase credentials and does not enable push notifications. The current scanner only logs qualifying candidates; FCM delivery remains a separate implementation step.
