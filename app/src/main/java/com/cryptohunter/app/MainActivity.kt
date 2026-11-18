@@ -79,7 +79,8 @@ class MarketRepository {
                 val arr = JSONArray(get("$base$path?symbol=$symbol&interval=$interval&limit=120"))
                 val closes = (0 until arr.length()).map { arr.getJSONArray(it).getString(4).toDouble() }
                 val highs = (0 until arr.length()).map { arr.getJSONArray(it).getString(2).toDouble() }
-                val lows = (0 until arr.length()).map { arr.getJSONArray(it).getString(3).toDouble() }\n                val volumes = (0 until arr.length()).map { arr.getJSONArray(it).getString(5).toDouble() }
+                val lows = (0 until arr.length()).map { arr.getJSONArray(it).getString(3).toDouble() }
+                val volumes = (0 until arr.length()).map { arr.getJSONArray(it).getString(5).toDouble() }
                 val rsi = Indicators.rsi(closes)
                 val ema20 = Indicators.ema(closes, 20)
                 val ema50 = Indicators.ema(closes, 50)
@@ -106,7 +107,8 @@ class MarketRepository {
                 val tp3 = if (shortSignal && futures) entry - risk * 3.0 else entry + risk * 3.0
                 val label = when {
                     bullish && score >= 70 -> "صعود محتمل"
-                    shortSignal -> "هبوط محتمل • بيع"
+                    shortSignal && futures -> "هبوط محتمل • فرصة بيع"
+                    bearish && !futures -> "ضغط هابط • تجنب الشراء"
                     volumeSpike -> "ارتفاع حجم التداول"
                     else -> "مراقبة"
                 }
@@ -154,6 +156,7 @@ object Indicators {
 
 class MarketViewModel : ViewModel() {
     var futures by mutableStateOf(false)
+    var interval by mutableStateOf("5m")
     var loading by mutableStateOf(false)
     var error by mutableStateOf("")
     var signals by mutableStateOf<List<CoinSignal>>(emptyList())
@@ -197,6 +200,15 @@ fun CryptoHunterApp(vm: MarketViewModel = viewModel()) {
                 Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ModeButton("SPOT", !vm.futures, Modifier.weight(1f)) { vm.futures = false; vm.refresh() }
                     ModeButton("FUTURES", vm.futures, Modifier.weight(1f)) { vm.futures = true; vm.refresh() }
+                }
+                Row(Modifier.fillMaxWidth().padding(bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("1m", "3m", "5m", "15m").forEach { frame ->
+                        FilterChip(
+                            selected = vm.interval == frame,
+                            onClick = { if (vm.interval != frame) { vm.interval = frame; vm.refresh() } },
+                            label = { Text(frame) }
+                        )
+                    }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(if (vm.futures) "أفضل فرص العقود الآجلة" else "أفضل فرص السوق الفوري", color = Color(0xFF102A43), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
