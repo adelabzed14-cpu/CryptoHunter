@@ -1,0 +1,10 @@
+name = "crypto-hunter-market-scanner"
+main = "src/index.ts"
+compatibility_date = "2026-11-18"
+
+[[kv_namespaces]]
+binding = "ALERT_COOLDOWN"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+[triggers]
+crons = ["*/5 * * * *"]
