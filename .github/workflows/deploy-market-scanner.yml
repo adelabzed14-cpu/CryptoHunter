@@ -1,0 +1,47 @@
+name: Deploy Crypto Hunter Market Scanner
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "market-scanner/**"
+      - ".github/workflows/deploy-market-scanner.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crypto-hunter-market-scanner-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Type-check and deploy Cloudflare Worker
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: market-scanner
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: market-scanner/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Deploy Worker
+        run: npm run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
