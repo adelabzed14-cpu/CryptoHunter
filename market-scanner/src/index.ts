@@ -1,5 +1,8 @@
 export interface Env {
   ALERT_COOLDOWN: KVNamespace;
+  FIREBASE_PROJECT_ID: string;
+  FCM_CLIENT_EMAIL: string;
+  FCM_PRIVATE_KEY: string;
 }
 
 type Kline = [number, string, string, string, string, string, ...unknown[]];
