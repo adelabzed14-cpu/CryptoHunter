@@ -28,12 +28,12 @@ import org.json.JSONArray
 import kotlin.math.abs
 import kotlin.math.max
 
-private val Bg = Color(0xFF090D14)
-private val Panel = Color(0xFF151D29)
-private val Gold = Color(0xFFE5B94F)
+private val Bg = Color(0xFFF2F8FC)
+private val Panel = Color(0xFFFFFFFF)
+private val Gold = Color(0xFF38A9E8)
 private val Green = Color(0xFF26C281)
 private val Red = Color(0xFFEF6262)
-private val Muted = Color(0xFF9AA8BA)
+private val Muted = Color(0xFF64748B)
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -166,14 +166,14 @@ class MarketViewModel : ViewModel() {
 @Composable
 fun CryptoHunterApp(vm: MarketViewModel = viewModel()) {
     LaunchedEffect(Unit) { vm.refresh() }
-    MaterialTheme(colorScheme = darkColorScheme(
+    MaterialTheme(colorScheme = lightColorScheme(
         primary = Gold, background = Bg, surface = Panel,
         onBackground = Color.White, onSurface = Color.White
     )) {
         Scaffold(containerColor = Bg, topBar = {
             TopAppBar(
                 title = { Column {
-                    Text("CRYPTO HUNTER", color = Gold, fontWeight = FontWeight.Black)
+                    Text("CRYPTO HUNTER", color = Color(0xFF102A43), fontWeight = FontWeight.Black)
                     Text("ماسح سوق Binance الذكي", color = Muted, style = MaterialTheme.typography.labelSmall)
                 }},
                 actions = { IconButton(onClick = { vm.refresh() }) { Icon(Icons.Default.Refresh, "تحديث", tint = Gold) } },
@@ -186,7 +186,7 @@ fun CryptoHunterApp(vm: MarketViewModel = viewModel()) {
                     ModeButton("FUTURES", vm.futures, Modifier.weight(1f)) { vm.futures = true; vm.refresh() }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (vm.futures) "أفضل فرص العقود الآجلة" else "أفضل فرص السوق الفوري", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    Text(if (vm.futures) "أفضل فرص العقود الآجلة" else "أفضل فرص السوق الفوري", color = Color(0xFF102A43), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     Text("تحديث: ${vm.updated.ifBlank { "--:--" }}", color = Muted, style = MaterialTheme.typography.labelSmall)
                 }
                 Text("أفضل 10 فرص حسب المؤشرات الفنية • إطار 1 ساعة", color = Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
@@ -217,7 +217,7 @@ fun SignalCard(s: CoinSignal) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    Text(s.symbol, color = Color.White, fontWeight = FontWeight.Bold)
+                    Text(s.symbol, color = Color(0xFF102A43), fontWeight = FontWeight.Bold)
                     Text("24h ${"%.2f".format(s.change)}%", color = if (s.change >= 0) Green else Red, style = MaterialTheme.typography.labelSmall)
                 }
                 Column(horizontalAlignment = Alignment.End) {
@@ -225,8 +225,8 @@ fun SignalCard(s: CoinSignal) {
                     Text(s.signal, color = if (s.score >= 75) Green else Muted, style = MaterialTheme.typography.labelSmall)
                 }
             }
-            HorizontalDivider(Modifier.padding(vertical = 10.dp), color = Color(0xFF293647))
-            Text("السعر الحالي / الدخول: ${fmt(s.entry)} USDT", color = Color.White)
+            HorizontalDivider(Modifier.padding(vertical = 10.dp), color = Color(0xFFE2EAF1))
+            Text("السعر الحالي / الدخول: ${fmt(s.entry)} USDT", color = Color(0xFF102A43))
             Text("وقف الخسارة: ${fmt(s.stop)}", color = Red)
             Text("جني الأرباح: ${fmt(s.tp1)}  |  ${fmt(s.tp2)}  |  ${fmt(s.tp3)}", color = Green)
             Text(s.reason, color = Muted, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 8.dp))
