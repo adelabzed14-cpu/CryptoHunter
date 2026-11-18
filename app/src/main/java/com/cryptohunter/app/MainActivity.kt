@@ -58,7 +58,7 @@ class MarketRepository {
         }
     }
 
-    suspend fun scan(futures: Boolean): List<CoinSignal> {
+    suspend fun scan(futures: Boolean, interval: String): List<CoinSignal> {
         val base = if (futures) "https://fapi.binance.com" else "https://api.binance.com"
         val tickerPath = if (futures) "/fapi/v1/ticker/24hr" else "/api/v3/ticker/24hr"
         val tickers = JSONArray(get(base + tickerPath))
@@ -76,31 +76,44 @@ class MarketRepository {
         return candidates.sortedByDescending { abs(it.third) }.take(35).mapNotNull { (symbol, price, change) ->
             try {
                 val path = if (futures) "/fapi/v1/klines" else "/api/v3/klines"
-                val arr = JSONArray(get("$base$path?symbol=$symbol&interval=1h&limit=120"))
+                val arr = JSONArray(get("$base$path?symbol=$symbol&interval=$interval&limit=120"))
                 val closes = (0 until arr.length()).map { arr.getJSONArray(it).getString(4).toDouble() }
                 val highs = (0 until arr.length()).map { arr.getJSONArray(it).getString(2).toDouble() }
-                val lows = (0 until arr.length()).map { arr.getJSONArray(it).getString(3).toDouble() }
+                val lows = (0 until arr.length()).map { arr.getJSONArray(it).getString(3).toDouble() }\n                val volumes = (0 until arr.length()).map { arr.getJSONArray(it).getString(5).toDouble() }
                 val rsi = Indicators.rsi(closes)
                 val ema20 = Indicators.ema(closes, 20)
                 val ema50 = Indicators.ema(closes, 50)
                 val macd = Indicators.macdBullish(closes)
                 val atr = Indicators.atr(highs, lows, closes)
-                var score = 50
-                if (rsi in 42.0..65.0) score += 15
-                if (rsi < 30) score += 12
-                if (ema20 > ema50) score += 15
-                if (macd) score += 10
-                if (change > 0) score += 5
-                score = score.coerceIn(0, 100)
+                val bullish = ema20 > ema50 && macd && rsi >= 48
+                val bearish = ema20 < ema50 && !macd && rsi <= 52
+                val avgVolume = volumes.dropLast(1).takeLast(20).average().coerceAtLeast(0.0000001)
+                val volumeRatio = volumes.last() / avgVolume
+                val volumeSpike = volumeRatio >= 1.8
+                var score = 45
+                if (bullish && rsi in 48.0..70.0) score += 20
+                if (bearish && rsi in 30.0..52.0) score += 20
+                if (volumeSpike) score += 18
+                if (abs(change) >= 2.0) score += 8
+                if (rsi in 35.0..70.0) score += 5
+                score = score.coerceIn(0, 96)
+                val shortSignal = bearish && score >= 65
                 val entry = price
-                val stop = max(0.0, entry - atr * 1.6)
-                val risk = entry - stop
+                val risk = (atr * 1.6).coerceAtLeast(entry * 0.003)
+                val stop = if (shortSignal && futures) entry + risk else max(0.0, entry - risk)
+                val tp1 = if (shortSignal && futures) entry - risk * 1.5 else entry + risk * 1.5
+                val tp2 = if (shortSignal && futures) entry - risk * 2.2 else entry + risk * 2.2
+                val tp3 = if (shortSignal && futures) entry - risk * 3.0 else entry + risk * 3.0
+                val label = when {
+                    bullish && score >= 70 -> "صعود محتمل"
+                    shortSignal -> "هبوط محتمل • بيع"
+                    volumeSpike -> "ارتفاع حجم التداول"
+                    else -> "مراقبة"
+                }
                 CoinSignal(
-                    symbol, price, change, score,
-                    if (score >= 75) "شراء محتمل" else if (score <= 40) "ضعيفة" else "مراقبة",
-                    entry, stop, entry + risk * 1.5, entry + risk * 2.2,
-                    entry + risk * 3.0,
-                    "RSI ${"%.1f".format(rsi)} • EMA20/50 ${if (ema20 > ema50) "إيجابي" else "سلبي"} • MACD ${if (macd) "إيجابي" else "محايد"}"
+                    symbol, price, change, score, label,
+                    entry, stop, tp1, tp2, tp3,
+                    "RSI ${"%.1f".format(rsi)} • حجم التداول ${"%.1f".format(volumeRatio)}x • EMA20/50 ${if (ema20 > ema50) "إيجابي" else "سلبي"} • MACD ${if (macd) "إيجابي" else "سلبي"}"
                 )
             } catch (_: Exception) { null }
         }.sortedByDescending { it.score }.take(10)
@@ -152,7 +165,7 @@ class MarketViewModel : ViewModel() {
             loading = true
             error = ""
             try {
-                signals = withContext(Dispatchers.IO) { repo.scan(futures) }
+                signals = withContext(Dispatchers.IO) { repo.scan(futures, interval) }
                 updated = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
                 if (signals.isEmpty()) error = "لم تصل نتائج. تحقق من اتصال الإنترنت أو أعد المحاولة."
             } catch (e: Exception) {
@@ -189,7 +202,7 @@ fun CryptoHunterApp(vm: MarketViewModel = viewModel()) {
                     Text(if (vm.futures) "أفضل فرص العقود الآجلة" else "أفضل فرص السوق الفوري", color = Color(0xFF102A43), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                     Text("تحديث: ${vm.updated.ifBlank { "--:--" }}", color = Muted, style = MaterialTheme.typography.labelSmall)
                 }
-                Text("أفضل 10 فرص حسب المؤشرات الفنية • إطار 1 ساعة", color = Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
+                Text("رصد الزخم وحجم التداول • إطار ${vm.interval}", color = Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
                 if (vm.loading) LinearProgressIndicator(Modifier.fillMaxWidth(), color = Gold)
                 if (vm.error.isNotBlank()) Text(vm.error, color = Red, modifier = Modifier.padding(8.dp))
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
