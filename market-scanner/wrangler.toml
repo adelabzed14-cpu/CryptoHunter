@@ -4,7 +4,7 @@ compatibility_date = "2026-11-18"
 
 [[kv_namespaces]]
 binding = "ALERT_COOLDOWN"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "5a6d54c7670c473c9d6d1c119a73d364"
 
 [triggers]
 crons = ["*/5 * * * *"]
