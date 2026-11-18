@@ -118,31 +118,52 @@ class MarketRepository {
                 val ema50 = Indicators.ema(closes, 50)
                 val macd = Indicators.macdBullish(closes)
                 val atr = Indicators.atr(highs, lows, closes)
-                val bullish = ema20 > ema50 && macd && rsi >= 48
-                val bearish = ema20 < ema50 && !macd && rsi <= 52
+                val bullishTrend = ema20 > ema50
+                val bearishTrend = ema20 < ema50
+                val bullishMomentum = closes.last() > closes[closes.size - 4] * 1.005
+                val bearishMomentum = closes.last() < closes[closes.size - 4] * 0.995
+                val previousHigh = highs.dropLast(1).takeLast(20).maxOrNull() ?: highs.last()
+                val previousLow = lows.dropLast(1).takeLast(20).minOrNull() ?: lows.last()
+                val bullishBreakout = closes.last() > previousHigh
+                val bearishBreakdown = closes.last() < previousLow
                 val avgVolume = volumes.dropLast(1).takeLast(20).average().coerceAtLeast(0.0000001)
                 val volumeRatio = volumes.last() / avgVolume
                 val volumeSpike = volumeRatio >= 1.8
-                var score = 45
-                if (bullish && rsi in 48.0..70.0) score += 20
-                if (bearish && rsi in 30.0..52.0) score += 20
-                if (volumeSpike) score += 18
-                if (abs(change) >= 2.0) score += 8
-                if (rsi in 35.0..70.0) score += 5
-                score = score.coerceIn(0, 96)
+
+                var bullishScore = 0
+                if (bullishTrend) bullishScore += 20
+                if (macd) bullishScore += 15
+                if (rsi in 50.0..70.0) bullishScore += 10
+                if (volumeSpike) bullishScore += 20 else if (volumeRatio >= 1.3) bullishScore += 10
+                if (bullishBreakout) bullishScore += 20
+                if (bullishMomentum) bullishScore += 15
+
+                var bearishScore = 0
+                if (bearishTrend) bearishScore += 20
+                if (!macd) bearishScore += 15
+                if (rsi in 30.0..50.0) bearishScore += 10
+                if (volumeSpike) bearishScore += 20 else if (volumeRatio >= 1.3) bearishScore += 10
+                if (bearishBreakdown) bearishScore += 20
+                if (bearishMomentum) bearishScore += 15
+
+                val bullish = bullishScore >= bearishScore
+                val bearish = bearishScore > bullishScore
+                val score = if (bullish) bullishScore else bearishScore
                 val shortSignal = bearish && score >= 65
                 val entry = price
                 val risk = (atr * 1.6).coerceAtLeast(entry * 0.003)
-                val stop = if (shortSignal && futures) entry + risk else max(0.0, entry - risk)
-                val tp1 = if (shortSignal && futures) entry - risk * 1.5 else entry + risk * 1.5
-                val tp2 = if (shortSignal && futures) entry - risk * 2.2 else entry + risk * 2.2
-                val tp3 = if (shortSignal && futures) entry - risk * 3.0 else entry + risk * 3.0
+                val isDownsideSetup = bearish
+                val stop = if (isDownsideSetup) entry + risk else max(0.0, entry - risk)
+                val tp1 = if (isDownsideSetup) entry - risk * 1.5 else entry + risk * 1.5
+                val tp2 = if (isDownsideSetup) entry - risk * 2.2 else entry + risk * 2.2
+                val tp3 = if (isDownsideSetup) entry - risk * 3.0 else entry + risk * 3.0
                 val label = when {
-                    bullish && score >= 70 -> "صعود محتمل"
-                    shortSignal && futures -> "هبوط محتمل • فرصة بيع"
-                    bearish && !futures -> "ضغط هابط • تجنب الشراء"
+                    bullish && score >= 80 -> "صعود محتمل • إشارة قوية"
+                    bearish && score >= 80 -> "هبوط محتمل • إشارة قوية"
+                    bullish && score >= 65 -> "زخم صاعد • مراقبة"
+                    bearish && score >= 65 -> "ضغط هابط • مراقبة"
                     volumeSpike -> "ارتفاع حجم التداول"
-                    else -> "مراقبة"
+                    else -> "مراقبة" 
                 }
                 CoinSignal(
                     symbol, price, change, score, label,
