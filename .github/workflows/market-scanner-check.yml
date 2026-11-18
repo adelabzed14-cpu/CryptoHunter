@@ -1,0 +1,27 @@
+name: Market Scanner Type Check
+on:
+  push:
+    paths:
+      - "market-scanner/**"
+      - ".github/workflows/market-scanner-check.yml"
+  pull_request:
+    paths:
+      - "market-scanner/**"
+      - ".github/workflows/market-scanner-check.yml"
+permissions:
+  contents: read
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: market-scanner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install dependencies
+        run: npm install
+      - name: Check TypeScript
+        run: npm run typecheck
