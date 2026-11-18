@@ -1,0 +1,28 @@
+{
+  "project_info": {
+    "project_number": "459608550724",
+    "project_id": "crypto-hunter-f76ec",
+    "storage_bucket": "crypto-hunter-f76ec.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:459608550724:android:d475153b489172bf12bb11",
+        "android_client_info": {
+          "package_name": "com.cryptohunter.app"
+        }
+      },
+      "api_key": [
+        {
+          "current_key": "AIzaSyARqFws-CCfJfB8Um_usOWjj95hHZq2RYs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
